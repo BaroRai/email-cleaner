@@ -2,26 +2,36 @@
 #define EMAILMANAGER_H
 
 #include <QObject>
+#include <QMap>
 #include <QString>
 #include <QStringList>
 
-class EmailManager : public QObject {
+class ConnectionManager;
+
+class EmailManager : public QObject
+{
     Q_OBJECT
 
 public:
-    explicit EmailManager(QObject *parent = nullptr);
+    // We pass a pointer to ConnectionManager in constructor (no stubs)
+    explicit EmailManager(ConnectionManager *connMgr, QObject *parent = nullptr);
 
-    Q_INVOKABLE bool connectToServer(const QString &server, const QString &username, const QString &password);
-    Q_INVOKABLE QStringList fetchRepositories();
-    Q_INVOKABLE void applyCleanupRules(bool deleteRead, bool excludeAttachments);
+    QStringList fetchRepositories();
+    void applyCleanupRules(bool deleteRead, bool excludeAttachments);
+    void requestFetchSenders(const QString &repository);
+    QMap<QString,int> fetchSenders(const QString &repository);
 
 signals:
-    void connectionStatus(bool success);
     void repositoriesFetched(const QStringList &repositories);
     void cleanupCompleted();
+    void progressUpdated(int value, const QString &status);
+    void sendersFetched(const QMap<QString,int> &senderCounts);
 
 private:
+    ConnectionManager *m_conn;  // must not be null if we want real IMAP
     QStringList repositories;
+    QString extractSenderFromFetchResponse(const QString &fetchResponse);
+    QString decodeMimeEncodedString(const QString &encodedString);
 };
 
 #endif // EMAILMANAGER_H
