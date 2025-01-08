@@ -20,6 +20,9 @@ MainWindow::MainWindow(QWidget *parent)
     , userManager(new UserManager(this))
 {
     ui->setupUi(this);
+
+    setWindowTitle("Email Manager");
+
     setupThemeComboBox();
     setupConnections();
     loadUserAccounts();
@@ -73,7 +76,7 @@ void MainWindow::applyTheme(const QString &theme)
     qApp->setStyleSheet(file.readAll());
     file.close();
 
-    QSettings settings("YourCompany", "YourApp");
+    QSettings settings("VaskoCorp", "email-manager");
     settings.setValue("theme", theme);
 }
 
@@ -181,6 +184,41 @@ void MainWindow::setupConnections()
         QString repo = ui->repositoryComboBox->currentText();
         emailManager->requestFetchSenders(repo);
     });
+
+    // Cleanup button
+    connect(ui->runCleanupButton, &QPushButton::clicked, this, [this]() {
+        QString repository = connectionManager->getCurrentRepository();
+        if (repository.isEmpty()) {
+            qDebug() << "No repository selected. Cannot run cleanup.";
+            return;
+        }
+
+        QStringList selectedSenders;
+        for (int row = 0; row < ui->senderTableWidget->rowCount(); ++row) {
+            QTableWidgetItem *senderItem = ui->senderTableWidget->item(row, 0);
+            if (senderItem && senderItem->checkState() == Qt::Checked) {
+                selectedSenders.append(senderItem->text());
+            }
+        }
+
+        if (selectedSenders.isEmpty()) {
+            qDebug() << "No senders selected for cleanup.";
+            return;
+        }
+
+        bool deleteRead = ui->deleteReadCheckBox->isChecked();
+        bool excludeAttachments = !ui->deleteWithAttach->isChecked(); // Inverted logic for clarity
+
+        emailManager->applyCleanupRules(repository, selectedSenders, deleteRead, excludeAttachments);
+    });
+
+    // Update ui after clean
+    connect(emailManager, &EmailManager::progressUpdated, this, &MainWindow::updateProgress);
+    connect(emailManager, &EmailManager::cleanupCompleted, this, [this]() {
+        ui->statusbar->showMessage("Cleanup completed successfully!");
+    });
+
+
 }
 
 void MainWindow::onConnectionStatus(bool success)
@@ -221,20 +259,32 @@ void MainWindow::setupUserAndRepositorySelection()
         }
 
         // Clear repositoryComboBox
-        ui->repositoryComboBox->clear();
+        //ui->repositoryComboBox->clear();
     });
 
     // Leave this as is if you want to log the selected repository
-    connect(ui->repositoryComboBox, &QComboBox::currentTextChanged, this, [](const QString &repository) {
-        qDebug() << "Selected repository:" << repository;
+    connect(ui->repositoryComboBox, &QComboBox::currentTextChanged, this, [this](const QString &repository) {
+        if (repository.isEmpty()) {
+            qDebug() << "No repository selected.";
+            return;
+        }
+
+        connectionManager->setCurrentRepository(repository);
+        qDebug() << "Repository selected and set:" << repository;
     });
 }
 
 void MainWindow::populateRepositories(const QStringList &repositories)
 {
     ui->repositoryComboBox->clear();
+
+    if (repositories.isEmpty()) {
+        qDebug() << "No repositories found to populate.";
+        return;
+    }
+
     ui->repositoryComboBox->addItems(repositories);
-    qDebug() << "Repositories populated:" << repositories;
+    qDebug() << "Repositories populated into comboBox:" << repositories;
 }
 
 void MainWindow::loadUserAccounts()

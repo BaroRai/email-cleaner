@@ -5,7 +5,8 @@
 ConnectionManager::ConnectionManager(QObject *parent)
     : QObject(parent),
     sslSocket(new QSslSocket(this)),
-    connected(false)
+    connected(false),
+    currentRepository("")
 {
     qDebug() << "SSL Support:" << QSslSocket::supportsSsl();
 }
@@ -278,6 +279,16 @@ bool ConnectionManager::sendCommand(const QString &command)
         qDebug() << "ConnectionManager: Not connected. Cannot send command:" << command;
         return false;
     }
+
+    if (command.startsWith("A010 SELECT")) {
+        int start = command.indexOf("\"") + 1;
+        int end = command.lastIndexOf("\"");
+        if (start != -1 && end != -1 && end > start) {
+            currentRepository = decodeModifiedUTF7(command.mid(start, end - start));
+            qDebug() << "Current repository set to:" << currentRepository;
+        }
+    }
+
     qDebug() << "ConnectionManager: Sending command:" << command;
     sslSocket->write(command.toUtf8());
     sslSocket->flush();
@@ -294,3 +305,49 @@ QString ConnectionManager::readResponse(int timeoutMs)
     qDebug() << "ConnectionManager: Server response:" << data;
     return QString::fromLatin1(data);
 }
+
+void ConnectionManager::setCurrentRepository(const QString &repository)
+{
+    currentRepository = repository;
+    qDebug() << "Current repository updated to:" << currentRepository;
+}
+
+QString ConnectionManager::getCurrentRepository() const
+{
+    if (currentRepository.isEmpty()) {
+        qDebug() << "No repository currently selected.";
+        return QString();
+    }
+    qDebug() << "Current repository retrieved as:" << currentRepository;
+    return currentRepository;
+}
+
+
+QString ConnectionManager::findTrashFolder()
+{
+    if (!connected) {
+        qDebug() << "Not connected. Cannot find trash folder.";
+        return QString();
+    }
+
+    QStringList repositories = fetchRepositories();
+    if (repositories.isEmpty()) {
+        qDebug() << "No repositories found to search for trash folder.";
+        return QString();
+    }
+
+    // Search for the folder containing "Trash" or its localized equivalents
+    QStringList trashKeywords = {"Trash", "Deleted Items", "Bin", "Kôš", "Papierkorb", "Corbeille"};
+    for (const QString &repo : repositories) {
+        for (const QString &keyword : trashKeywords) {
+            if (repo.contains(keyword, Qt::CaseInsensitive)) {
+                qDebug() << "Found trash folder:" << repo;
+                return repo;
+            }
+        }
+    }
+
+    qDebug() << "No trash folder found.";
+    return QString();
+}
+

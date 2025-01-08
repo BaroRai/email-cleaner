@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>774</width>
-    <height>575</height>
+    <width>829</width>
+    <height>584</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -15,7 +15,7 @@
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QGridLayout" name="gridLayout">
-    <item row="0" column="1">
+    <item row="0" column="0">
      <widget class="QTabWidget" name="tabWidget">
       <property name="tabPosition">
        <enum>QTabWidget::TabPosition::North</enum>
@@ -59,8 +59,8 @@
        <widget class="QCheckBox" name="deleteReadCheckBox">
         <property name="geometry">
          <rect>
-          <x>340</x>
-          <y>80</y>
+          <x>560</x>
+          <y>50</y>
           <width>151</width>
           <height>26</height>
          </rect>
@@ -76,7 +76,7 @@
         <property name="geometry">
          <rect>
           <x>560</x>
-          <y>300</y>
+          <y>20</y>
           <width>111</width>
           <height>29</height>
          </rect>
@@ -91,8 +91,8 @@
        <widget class="QPushButton" name="fetchSenderButton">
         <property name="geometry">
          <rect>
-          <x>560</x>
-          <y>250</y>
+          <x>340</x>
+          <y>80</y>
           <width>111</width>
           <height>29</height>
          </rect>
@@ -158,7 +158,7 @@
          <rect>
           <x>110</x>
           <y>120</y>
-          <width>441</width>
+          <width>671</width>
           <height>361</height>
          </rect>
         </property>
@@ -191,6 +191,22 @@
         </property>
         <property name="orientation">
          <enum>Qt::Orientation::Vertical</enum>
+        </property>
+       </widget>
+       <widget class="QCheckBox" name="deleteWithAttach">
+        <property name="geometry">
+         <rect>
+          <x>560</x>
+          <y>80</y>
+          <width>231</width>
+          <height>21</height>
+         </rect>
+        </property>
+        <property name="toolTip">
+         <string>check if you want to delete already read emails. In default only unread emails will be deleted.</string>
+        </property>
+        <property name="text">
+         <string>Delete emails with attachment</string>
         </property>
        </widget>
       </widget>

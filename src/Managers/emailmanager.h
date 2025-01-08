@@ -17,7 +17,7 @@ public:
     explicit EmailManager(ConnectionManager *connMgr, QObject *parent = nullptr);
 
     QStringList fetchRepositories();
-    void applyCleanupRules(bool deleteRead, bool excludeAttachments);
+    void applyCleanupRules(const QString &repository, const QStringList &selectedSenders, bool deleteRead, bool excludeAttachments);
     void requestFetchSenders(const QString &repository);
     QMap<QString,int> fetchSenders(const QString &repository);
 
@@ -32,6 +32,8 @@ private:
     QStringList repositories;
     QString extractSenderFromFetchResponse(const QString &fetchResponse);
     QString decodeMimeEncodedString(const QString &encodedString);
+    QString findTrashFolder();
+
 };
 
 #endif // EMAILMANAGER_H

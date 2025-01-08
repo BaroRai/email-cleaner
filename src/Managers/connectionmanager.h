@@ -20,8 +20,7 @@ public:
     explicit ConnectionManager(QObject *parent = nullptr);
     ~ConnectionManager();
 
-    bool connectToServer(const QString &server, int port,
-                         const QString &username, const QString &password);
+    bool connectToServer(const QString &server, int port, const QString &username, const QString &password);
 
     void disconnectFromServer();
     bool isConnected() const;
@@ -36,6 +35,10 @@ public:
     QString decodeModifiedUTF7(const QString &input);
     QString encodeModifiedUTF7(const QString &input);
 
+    QString getCurrentRepository() const;
+    QString findTrashFolder();
+    void setCurrentRepository(const QString &repository);
+
 signals:
     void connectionStatus(bool success);
     void repositoriesFetched(const QStringList &repositories);
@@ -45,6 +48,8 @@ private:
     bool connected; // The single source of truth about connectivity
 
     QString parseListLineForMailboxName(const QString &line);
+    QString currentRepository;
+
 
 };
 
