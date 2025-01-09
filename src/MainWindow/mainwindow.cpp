@@ -11,6 +11,7 @@
 #include <QDebug>
 #include <QDir>
 #include <QTableWidgetItem>
+#include <QMessageBox>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -189,7 +190,7 @@ void MainWindow::setupConnections()
     connect(ui->runCleanupButton, &QPushButton::clicked, this, [this]() {
         QString repository = connectionManager->getCurrentRepository();
         if (repository.isEmpty()) {
-            qDebug() << "No repository selected. Cannot run cleanup.";
+            QMessageBox::critical(this, "Repository Error", "No repository selected. Please select one.");
             return;
         }
 
@@ -202,22 +203,49 @@ void MainWindow::setupConnections()
         }
 
         if (selectedSenders.isEmpty()) {
-            qDebug() << "No senders selected for cleanup.";
+            QMessageBox::information(this, "No Selection", "No senders selected for cleanup.");
             return;
         }
 
         bool deleteRead = ui->deleteReadCheckBox->isChecked();
-        bool excludeAttachments = !ui->deleteWithAttach->isChecked(); // Inverted logic for clarity
+        bool excludeAttachments = !ui->deleteWithAttach->isChecked();
 
         emailManager->applyCleanupRules(repository, selectedSenders, deleteRead, excludeAttachments);
     });
 
     // Update ui after clean
     connect(emailManager, &EmailManager::progressUpdated, this, &MainWindow::updateProgress);
+
     connect(emailManager, &EmailManager::cleanupCompleted, this, [this]() {
         ui->statusbar->showMessage("Cleanup completed successfully!");
+        ui->progressBar->setVisible(false);
     });
 
+    connect(emailManager, &EmailManager::senderDeleted, this, [this](const QString &sender) {
+        for (int row = ui->senderTableWidget->rowCount() - 1; row >= 0; --row) {
+            QTableWidgetItem *senderItem = ui->senderTableWidget->item(row, 0);
+            if (senderItem && senderItem->text() == sender) {
+                ui->senderTableWidget->removeRow(row);
+                break;
+            }
+        }
+        qDebug() << "Removed sender from table:" << sender;
+    });
+
+    connect(emailManager, &EmailManager::removeSenderFromTable, this, [this](const QString &sender) {
+        for (int row = 0; row < ui->senderTableWidget->rowCount(); ++row) {
+            QTableWidgetItem *senderItem = ui->senderTableWidget->item(row, 0);
+            if (senderItem && senderItem->text() == sender) {
+                ui->senderTableWidget->removeRow(row);
+                break;
+            }
+        }
+    });
+
+    connect(emailManager, &EmailManager::showAlert, this, [this](const QString &title, const QString &message) {
+        QMessageBox::critical(this, title, message);
+        ui->progressBar->setVisible(true);  // Ensure progress bar remains visible after alert
+    });
 
 }
 
@@ -326,14 +354,14 @@ QVariantMap MainWindow::getCurrentUserData()
     return {};
 }
 
-void MainWindow::updateProgress(int value, const QString &status)
-{
+void MainWindow::updateProgress(int value, const QString &status) {
     ui->progressBar->setValue(value);
     ui->statusbar->showMessage(status);
 
-    if (value == 100) {
+    if (value == 100 || value == 0) {
         ui->progressBar->setVisible(false);
     } else {
         ui->progressBar->setVisible(true);
     }
 }
+

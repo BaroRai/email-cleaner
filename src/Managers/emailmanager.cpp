@@ -25,45 +25,124 @@ QStringList EmailManager::fetchRepositories()
     }
 }
 
-void EmailManager::applyCleanupRules(const QString &repository, const QStringList &selectedSenders, bool deleteRead, bool excludeAttachments)
-{
+void EmailManager::applyCleanupRules(const QString &repository, const QStringList &selectedSenders, bool deleteRead, bool excludeAttachments) {
     if (!m_conn || !m_conn->isConnected()) {
-        qDebug() << "Not connected. Cannot apply cleanup.";
+        emit progressUpdated(0, "Not connected to the server.");
         emit cleanupCompleted();
         return;
     }
 
-    if (repository.isEmpty()) {
-        qDebug() << "No repository selected. Cannot apply cleanup.";
-        emit cleanupCompleted();
-        return;
-    }
-
-    // SELECT the repository
     QString encodedRepo = m_conn->encodeModifiedUTF7(repository);
-    QString selectCmd = QString("A010 SELECT \"%1\"\r\n").arg(encodedRepo);
-    m_conn->sendCommand(selectCmd);
-    QString selResp = m_conn->readResponse();
-    if (!selResp.contains("A010 OK")) {
-        qDebug() << "Failed to SELECT repository for cleanup:" << selResp;
+    m_conn->sendCommand(QString("A010 SELECT \"%1\"\r\n").arg(encodedRepo));
+    QString selectResponse = m_conn->readResponse();
+
+    if (!selectResponse.contains("A010 OK")) {
+        emit progressUpdated(0, "Failed to select repository.");
         emit cleanupCompleted();
         return;
     }
 
-    // SEARCH emails based on flags (read/unread)
-    QString searchCmd = "A011 SEARCH";
-    searchCmd += deleteRead ? " ALL" : " UNSEEN"; // All emails or only unread
-    m_conn->sendCommand(searchCmd + "\r\n");
+    QString searchCmd = deleteRead ? "A011 SEARCH ALL\r\n" : "A011 SEARCH UNSEEN\r\n";
+    m_conn->sendCommand(searchCmd);
     QString searchResp = m_conn->readResponse();
-    if (searchResp.isEmpty() || !searchResp.contains("* SEARCH")) {
-        qDebug() << "No emails found for cleanup.";
+
+    QStringList msgIDs = extractMessageIDsFromResponse(searchResp);
+    if (msgIDs.isEmpty()) {
+        emit showAlert("No Emails Found", "No emails matched the criteria in the selected repository.");
         emit cleanupCompleted();
         return;
     }
 
-    // Extract message IDs from the SEARCH response
-    QStringList lines = searchResp.split("\r\n", Qt::SkipEmptyParts);
+    int totalMessages = msgIDs.size();
+    int processed = 0;
+
+    for (const QString &msgID : msgIDs) {
+        QString sender = fetchSenderForMessage(msgID);
+        if (!selectedSenders.contains(sender, Qt::CaseInsensitive)) {
+            ++processed;
+            emit progressUpdated((processed * 100) / totalMessages, "Skipping emails...");
+            continue;
+        }
+
+        QStringList reasons;
+
+        if (!deleteRead && isEmailRead(msgID)) {
+            reasons.append("Email is read, but 'Delete Read Emails' is not checked.");
+        }
+
+        if (excludeAttachments && emailHasAttachments(msgID)) {
+            reasons.append("Email has attachments, but 'Delete Emails with Attachments' is not checked.");
+        }
+
+        if (!reasons.isEmpty()) {
+            ++processed;
+            emit progressUpdated((processed * 100) / totalMessages, "Skipping emails...");
+            emit showAlert(
+                "Email Skipped",
+                QString("Email ID: %1\nReasons:\n- %2").arg(msgID, reasons.join("\n- "))
+                );
+            continue;
+        }
+
+        m_conn->sendCommand(QString("A013 STORE %1 +FLAGS (\\Deleted)\r\n").arg(msgID));
+        QString storeResp = m_conn->readResponse();
+
+        if (!storeResp.contains("A013 OK")) {
+            ++processed;
+            emit progressUpdated((processed * 100) / totalMessages, "Skipping emails...");
+            emit showAlert("Error", QString("Failed to delete email ID: %1").arg(msgID));
+            continue;
+        }
+
+        // Successfully deleted the email
+        emit senderDeleted(sender);  // Notify MainWindow to remove sender from the table
+        ++processed;
+        emit progressUpdated((processed * 100) / totalMessages, "Deleting emails...");
+        qDebug() << "Successfully deleted email ID:" << msgID;
+    }
+
+    emit cleanupCompleted();
+    emit progressUpdated(100, "Cleanup completed successfully.");
+    qDebug() << "Cleanup completed.";
+}
+
+bool EmailManager::isEmailRead(const QString &msgID) {
+    QString fetchCmd = QString("A014 FETCH %1 (FLAGS)\r\n").arg(msgID);
+    m_conn->sendCommand(fetchCmd);
+    QString fetchResp = m_conn->readResponse();
+
+    // Check if the FLAGS response includes the \Seen flag (indicating the email is read)
+    return fetchResp.contains("\\Seen");
+}
+
+
+QStringList EmailManager::findSendersByMessageID(const QString &msgID, const QStringList &selectedSenders)
+{
+    QStringList matchingSenders;
+
+    // Fetch sender for the given message ID
+    QString sender = fetchSenderForMessage(msgID);
+    if (sender.isEmpty()) {
+        qDebug() << "No sender found for message ID:" << msgID;
+        return matchingSenders;
+    }
+
+    // Check if the fetched sender is in the list of selected senders
+    if (selectedSenders.contains(sender, Qt::CaseInsensitive)) {
+        matchingSenders.append(sender);
+        qDebug() << "Matched sender:" << sender << "for message ID:" << msgID;
+    } else {
+        qDebug() << "Sender" << sender << "not in selected senders for message ID:" << msgID;
+    }
+
+    return matchingSenders;
+}
+
+QStringList EmailManager::extractMessageIDsFromResponse(const QString &response)
+{
+    QStringList lines = response.split("\r\n", Qt::SkipEmptyParts);
     QString messageIDsLine;
+
     for (const QString &ln : lines) {
         if (ln.startsWith("* SEARCH ")) {
             messageIDsLine = ln.mid(8).trimmed();
@@ -71,62 +150,26 @@ void EmailManager::applyCleanupRules(const QString &repository, const QStringLis
         }
     }
 
-    QStringList msgIDs = messageIDsLine.split(' ', Qt::SkipEmptyParts);
-    if (msgIDs.isEmpty()) {
-        qDebug() << "No matching emails for cleanup.";
-        emit cleanupCompleted();
-        return;
-    }
+    return messageIDsLine.split(' ', Qt::SkipEmptyParts);
+}
 
-    // Locate the trash folder
-    QString trashFolder = m_conn->findTrashFolder();
-    if (trashFolder.isEmpty()) {
-        qDebug() << "Trash folder not found. Cannot apply cleanup.";
-        emit cleanupCompleted();
-        return;
-    }
-    QString encodedTrash = m_conn->encodeModifiedUTF7(trashFolder);
+QString EmailManager::fetchSenderForMessage(const QString &msgID)
+{
+    QString fetchCmd = QString("A012 FETCH %1 (BODY[HEADER.FIELDS (FROM)])\r\n").arg(msgID);
+    m_conn->sendCommand(fetchCmd);
+    QString fetchResp = m_conn->readResponse();
 
-    // Process each email
-    for (const QString &msgID : msgIDs) {
-        // FETCH email headers to check sender
-        QString fetchCmd = QString("A012 FETCH %1 (BODY[HEADER.FIELDS (FROM)])\r\n").arg(msgID);
-        m_conn->sendCommand(fetchCmd);
-        QString fetchResp = m_conn->readResponse();
+    return extractSenderFromFetchResponse(fetchResp);
+}
 
-        // Extract the sender email from the response
-        QString senderEmail = extractSenderFromFetchResponse(fetchResp);
-        if (senderEmail.isEmpty()) {
-            qDebug() << "Failed to extract sender email for message ID:" << msgID;
-            continue;
-        }
+bool EmailManager::emailHasAttachments(const QString &msgID)
+{
+    QString fetchCmd = QString("A012 FETCH %1 (BODY[HEADER])\r\n").arg(msgID);
+    m_conn->sendCommand(fetchCmd);
+    QString fetchResp = m_conn->readResponse();
 
-        // Check if the sender is in the selectedSenders list
-        if (!selectedSenders.contains(senderEmail, Qt::CaseInsensitive)) {
-            qDebug() << "Skipping email. Sender not in selected list. Sender:" << senderEmail;
-            continue;
-        }
-
-        // Check for attachments if excludeAttachments is enabled
-        if (excludeAttachments && (fetchResp.contains("Content-Disposition: attachment") ||
-                                   fetchResp.contains("Content-Type: multipart/mixed"))) {
-            qDebug() << "Skipping email with attachment. Sender:" << senderEmail << ", ID:" << msgID;
-            continue;
-        }
-
-        // MOVE email to trash
-        QString moveCmd = QString("A013 MOVE %1 \"%2\"\r\n").arg(msgID, encodedTrash);
-        m_conn->sendCommand(moveCmd);
-        QString moveResp = m_conn->readResponse();
-        if (!moveResp.contains("A013 OK")) {
-            qDebug() << "Failed to move email ID:" << msgID << "to Trash.";
-        } else {
-            qDebug() << "Successfully moved email ID:" << msgID << "to Trash.";
-        }
-    }
-
-    emit cleanupCompleted();
-    qDebug() << "Cleanup process completed for repository:" << repository;
+    return fetchResp.contains("Content-Disposition: attachment") ||
+           fetchResp.contains("Content-Type: multipart/mixed");
 }
 
 void EmailManager::requestFetchSenders(const QString &repository)

@@ -46,6 +46,7 @@ private:
     void setupUserAndRepositorySelection();
     void populateRepositories(const QStringList &repositories);
     QVariantMap getCurrentUserData();
+    bool cleanupInProgress = false;
 };
 
 #endif // MAINWINDOW_H

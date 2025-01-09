@@ -14,7 +14,6 @@ ConnectionManager::ConnectionManager(QObject *parent)
 ConnectionManager::~ConnectionManager()
 {
     disconnectFromServer();
-    // sslSocket is auto-deleted
 }
 
 bool ConnectionManager::connectToServer(const QString &server, int port, const QString &username, const QString &password)
@@ -322,7 +321,6 @@ QString ConnectionManager::getCurrentRepository() const
     return currentRepository;
 }
 
-
 QString ConnectionManager::findTrashFolder()
 {
     if (!connected) {
@@ -350,4 +348,3 @@ QString ConnectionManager::findTrashFolder()
     qDebug() << "No trash folder found.";
     return QString();
 }
-

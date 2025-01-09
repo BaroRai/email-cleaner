@@ -26,6 +26,9 @@ signals:
     void cleanupCompleted();
     void progressUpdated(int value, const QString &status);
     void sendersFetched(const QMap<QString,int> &senderCounts);
+    void showAlert(const QString &title, const QString &message);
+    void removeSenderFromTable(const QString &sender);
+    void senderDeleted(const QString &sender);
 
 private:
     ConnectionManager *m_conn;  // must not be null if we want real IMAP
@@ -33,6 +36,12 @@ private:
     QString extractSenderFromFetchResponse(const QString &fetchResponse);
     QString decodeMimeEncodedString(const QString &encodedString);
     QString findTrashFolder();
+
+    bool emailHasAttachments(const QString &msgID);
+    bool isEmailRead(const QString &msgID);
+    QString fetchSenderForMessage(const QString &msgID);
+    QStringList extractMessageIDsFromResponse(const QString &response);
+    QStringList findSendersByMessageID(const QString &msgID, const QStringList &selectedSenders);
 
 };
 
