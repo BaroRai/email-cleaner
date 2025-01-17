@@ -20,7 +20,8 @@ QString UserManager::getUsersFilePath() {
 QList<QVariantMap> UserManager::loadUsers() {
     QString filePath = getUsersFilePath();
     QFile file(filePath);
-    qDebug() << "JSON file path:" << filePath; // Debug output
+    qDebug() << "JSON file path:" << filePath;
+
     if (!file.exists()) {
         qDebug() << "users.json not found. Starting with an empty user list.";
         return {};
@@ -42,8 +43,11 @@ QList<QVariantMap> UserManager::loadUsers() {
 
     QJsonArray usersArray = doc.object().value("accounts").toArray();
     QList<QVariantMap> loadedUsers;
+
     for (const QJsonValue &value : usersArray) {
-        loadedUsers.append(value.toObject().toVariantMap());
+        QVariantMap user = value.toObject().toVariantMap();
+        qDebug() << "Loaded user:" << user;  // Debugging output
+        loadedUsers.append(user);
     }
 
     return loadedUsers;

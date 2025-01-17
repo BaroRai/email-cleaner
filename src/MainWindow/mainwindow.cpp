@@ -16,9 +16,9 @@
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
+    , userManager(new UserManager(this))
     , connectionManager(new ConnectionManager(this))
     , emailManager(new EmailManager(connectionManager, this))
-    , userManager(new UserManager(this))
 {
     ui->setupUi(this);
 
@@ -163,19 +163,27 @@ void MainWindow::setupConnections()
     connect(ui->connectButton, &QPushButton::clicked, this, [this]() {
         QVariantMap userData = getCurrentUserData();
         if (userData.isEmpty()) {
-            qDebug() << "No user data found.";
+            QMessageBox::warning(this, "Error", "No user data found. Please select a user.");
             return;
         }
 
-        QString server   = userData["server"].toString();
-        QString username = userData["username"].toString();
+        QString server = userData["server"].toString();
+        QString email = userData["username"].toString();
         QString password = userData["password"].toString();
 
-        if (connectionManager->connectToServer(server, 993, username, password)) {
-            qDebug() << "Connection successful, now fetching repositories.";
+        if (server.isEmpty() || email.isEmpty() || password.isEmpty()) {
+            QMessageBox::warning(this, "Error", "Incomplete user data. Please check your account details.");
+            return;
+        }
+
+        // Attempt connection using ConnectionManager
+        int port = 993;  // Default IMAP SSL port
+        if (connectionManager->connectToServer(server, port, email, password)) {
+            qDebug() << "Connection successful. Fetching repositories...";
             QStringList repositories = connectionManager->fetchRepositories();
             populateRepositories(repositories);
         } else {
+            QMessageBox::critical(this, "Connection Failed", "Unable to connect to the server. Please check your credentials or server settings.");
             qDebug() << "Connection failed.";
         }
     });
@@ -245,6 +253,10 @@ void MainWindow::setupConnections()
     connect(emailManager, &EmailManager::showAlert, this, [this](const QString &title, const QString &message) {
         QMessageBox::critical(this, title, message);
         ui->progressBar->setVisible(true);  // Ensure progress bar remains visible after alert
+    });
+
+    connect(connectionManager, &ConnectionManager::showAlert, this, [this](const QString &title, const QString &message) {
+        QMessageBox::critical(this, title, message);
     });
 
 }
