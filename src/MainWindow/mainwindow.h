@@ -33,10 +33,9 @@ private:
     Ui::MainWindow *ui;
 
     // Managers
+    UserManager       *userManager;
     ConnectionManager *connectionManager;
     EmailManager      *emailManager;
-    UserManager       *userManager;
-
 
     void setupThemeComboBox();
     void applyTheme(const QString &theme);
